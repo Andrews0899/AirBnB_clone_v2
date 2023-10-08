@@ -1,58 +1,56 @@
 #!/usr/bin/python3
-""" Write a Fabric script (based on the file
-1-pack_web_static.py) that distributes an archive
-to your web servers, using the function do_deploy
+"""Compress web static package
 """
-from fabric.api import local, env, run, put
+from fabric.api import *
 from datetime import datetime
-from os.path import exists
+from os import path
+
 
 env.hosts = ['54.224.47.200', '100.25.203.58']
-
-
-def do_pack():
-    """[summary]"""
-    local('mkdir -p versions')
-    tar_dir = local("tar -czvf versions/web_static_{}.tgz web_static/".format((
-        datetime.strftime(datetime.now(), "%Y%m%d%H%M%S"))), capture=True)
-
-    if tar_dir.succeeded:
-        return tar_dir
-    return None
+env.user = 'ubuntu'
+env.key_filename = '~/.ssh/id_rsa'
 
 
 def do_deploy(archive_path):
-    """[summary]"""
-    # Returns False if the file at the path archive_path doesn’t exist
-    if exists(archive_path):
-        # archive_path = versions/web_static_#####.tgz
-        # file_path = web_static_#####.tgz
-        file_path = archive_path.split("/")[1]
-        # serv_path = /data/web_static/releases/web_static_#####
-        serv_path = "/data/web_static/releases/{}".format(
-            file_path.replace(".tgz", ""))
-        # Upload the archive to the /tmp/ directory of the web server
-        put('{}'.format(archive_path), '/tmp/')
-        # ???
-        run('mkdir -p {}'.format(serv_path))
-        # Uncompress the archive to the folde <..> on the web server
-        run('tar -xzf /tmp/{} -C {}/'.format(
-            file_path,
-            serv_path))
-        # Delete the archive from the web server
-        run('rm /tmp/{}'.format(file_path))
-        # ???
-        run('mv -f {}/web_static/* {}/'.format(serv_path, serv_path))
-        # Delete the symbolic link <..> from the web server
-        run('rm -rf {}/web_static'.format(
-            serv_path))
-        # ??
-        run('rm -rf /data/web_static/current')
-        # run('unlink /data/web_static/current')
-        # Create a new Symbolic link, linked to the new version of your code
-        run('ln -s {} /data/web_static/current'.format(
-            serv_path))
-        # Retur  True if all operations have been done correctly
+        """Deploy web files to server
+        """
+        try:
+                if not (path.exists(archive_path)):
+                        return False
+
+                # upload archive
+                put(archive_path, '/tmp/')
+
+                # create target dir
+                timestamp = archive_path[-18:-4]
+                run('sudo mkdir -p /data/web_static/\
+releases/web_static_{}/'.format(timestamp))
+
+                # uncompress archive and delete .tgz
+                run('sudo tar -xzf /tmp/web_static_{}.tgz -C \
+/data/web_static/releases/web_static_{}/'
+                    .format(timestamp, timestamp))
+
+                # remove archive
+                run('sudo rm /tmp/web_static_{}.tgz'.format(timestamp))
+
+                # move contents into host web_static
+                run('sudo mv /data/web_static/releases/web_static_{}/web_static/* \
+/data/web_static/releases/web_static_{}/'.format(timestamp, timestamp))
+
+                # remove extraneous web_static dir
+                run('sudo rm -rf /data/web_static/releases/\
+web_static_{}/web_static'
+                    .format(timestamp))
+
+                # delete pre-existing sym link
+                run('sudo rm -rf /data/web_static/current')
+
+                # re-establish symbolic link
+                run('sudo ln -s /data/web_static/releases/\
+web_static_{}/ /data/web_static/current'.format(timestamp))
+        except:
+                return False
+
+        # return True on success
         return True
-    else:
-        return False
